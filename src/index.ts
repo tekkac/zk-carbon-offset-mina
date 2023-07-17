@@ -1,3 +1,3 @@
-import { BasicTokenContract } from './CarbonToken';
+import { CarbonTokenContract } from './CarbonToken';
 
-export { BasicTokenContract };
+export { CarbonTokenContract };

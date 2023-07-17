@@ -1,124 +1,161 @@
-import { BasicTokenContract } from './BasicTokenContract.js';
+import { CarbonTokenContract } from './CarbonToken.js';
 import {
     isReady,
     shutdown,
+    Field,
     Mina,
     PrivateKey,
+    PublicKey,
     AccountUpdate,
     UInt64,
     Signature,
 } from 'snarkyjs';
 
-await isReady;
+(async function main() {
+    await isReady;
 
-console.log('SnarkyJS loaded');
+    console.log('SnarkyJS loaded');
 
-const proofsEnabled = false;
-const Local = Mina.LocalBlockchain({ proofsEnabled });
-Mina.setActiveInstance(Local);
-const deployerAccount = Local.testAccounts[0].privateKey;
-// ----------------------------------------------------
+    const Local = Mina.LocalBlockchain();
+    Mina.setActiveInstance(Local);
+    const deployerAccount = Local.testAccounts[0].privateKey;
 
-const zkAppPrivateKey = PrivateKey.random();
-const zkAppAddress = zkAppPrivateKey.toPublicKey();
+    // ----------------------------------------------------
 
-console.log('compiling...');
+    const zkAppPrivateKey = PrivateKey.random();
+    const zkAppAddress = zkAppPrivateKey.toPublicKey();
 
-let { verificationKey } = await BasicTokenContract.compile();
+    const signOnly = false;
 
-console.log('compiled');
+    console.log('compiling...');
 
-// ----------------------------------------------------
+    let verificationKey: any;
+    if (!signOnly) {
+        ({ verificationKey } = await CarbonTokenContract.compile());
+    }
 
-console.log('deploying...');
-const contract = new BasicTokenContract(zkAppAddress);
-const deploy_txn = await Mina.transaction(deployerAccount.toPublicKey(), () => {
-    AccountUpdate.fundNewAccount(deployerAccount.toPublicKey());
-    contract.deploy({ verificationKey, zkappKey: zkAppPrivateKey });
+    console.log('compiled');
+
+    // ----------------------------------------------------
+
+    console.log('deploying...');
+
+    const contract = new CarbonTokenContract(zkAppAddress);
+    const deploy_txn = await Mina.transaction(deployerAccount, () => {
+        AccountUpdate.fundNewAccount(deployerAccount);
+        if (signOnly) {
+            contract.deploy({ zkappKey: zkAppPrivateKey });
+        } else {
+            contract.deploy({ verificationKey, zkappKey: zkAppPrivateKey });
+        }
+        contract.sign(zkAppPrivateKey);
+    });
+    (await deploy_txn.send()).wait();
+
+    console.log('deployed');
+
+    // ----------------------------------------------------
+
+    console.log('initializing...');
+
+    const init_txn = await Mina.transaction(deployerAccount, () => {
+        contract.init();
+        if (signOnly) {
+            contract.sign(zkAppPrivateKey);
+        }
+    });
+    if (!signOnly) {
+        await init_txn.prove();
+    }
+    (await init_txn.send()).wait();
+
+    console.log('initialized');
+
+    // ----------------------------------------------------
+
+    console.log('minting...');
+
+    const mintAmount = UInt64.from(10);
+
+    const mintSignature = Signature.create(
+        zkAppPrivateKey,
+        mintAmount.toFields().concat(zkAppAddress.toFields())
+    );
+
+    const mint_txn = await Mina.transaction(deployerAccount, () => {
+        AccountUpdate.fundNewAccount(deployerAccount);
+        contract.mint(zkAppAddress, mintAmount, mintSignature);
+        if (signOnly) {
+            contract.sign(zkAppPrivateKey);
+        }
+    });
+    if (!signOnly) {
+        await mint_txn.prove();
+    }
+    (await (mint_txn.send())).wait();
+
+    console.log('minted');
+
+    console.log(
+        contract.totalAmountInCirculation.get() +
+        ' ' +
+        Mina.getAccount(zkAppAddress).tokenSymbol
+    );
+
+    // ----------------------------------------------------
+
+    console.log('sending...');
+
+    const sendAmount = UInt64.from(3);
+
+    const send_txn = await Mina.transaction(deployerAccount, () => {
+        AccountUpdate.fundNewAccount(deployerAccount);
+        contract.sendTokens(
+            zkAppAddress,
+            deployerAccount.toPublicKey(),
+            sendAmount
+        );
+        if (signOnly) {
+            contract.sign(zkAppPrivateKey);
+        }
+    });
+    send_txn.sign([zkAppPrivateKey]);
+    if (!signOnly) {
+        await send_txn.prove();
+    }
+    (await send_txn.send()).wait();
+
+    console.log('sent');
+
+    console.log(
+        contract.totalAmountInCirculation.get() +
+        ' ' +
+        Mina.getAccount(zkAppAddress).tokenSymbol
+    );
+
+    // ----------------------------------------------------
+
+    console.log(
+        'deployer tokens:',
+        Mina.getBalance(
+            deployerAccount.toPublicKey(),
+            contract.token.id
+        ).value.toBigInt()
+    );
+
+    console.log(
+        'zkapp tokens:',
+        Mina.getBalance(
+            zkAppAddress,
+            contract.token.id
+        ).value.toBigInt()
+    );
+
+    // ----------------------------------------------------
+
+    console.log('Shutting down');
+
+    await shutdown();
+})().catch((f) => {
+    console.log(f);
 });
-await deploy_txn.prove();
-await deploy_txn.sign([deployerAccount]).send();
-
-console.log('deployed');
-
-// ----------------------------------------------------
-
-console.log('initializing...');
-
-const init_txn = await Mina.transaction(deployerAccount.toPublicKey(), () => {
-    contract.init();
-});
-
-await init_txn.prove();
-await init_txn.sign([deployerAccount]).send();
-
-console.log('initialized');
-
-// ----------------------------------------------------
-
-console.log('minting...');
-
-const mintAmount = UInt64.from(10);
-
-const mintSignature = Signature.create(
-    zkAppPrivateKey,
-    mintAmount.toFields().concat(zkAppAddress.toFields())
-);
-
-const mint_txn = await Mina.transaction(deployerAccount.toPublicKey(), () => {
-    AccountUpdate.fundNewAccount(deployerAccount.toPublicKey());
-    contract.mint(zkAppAddress, mintAmount, mintSignature);
-});
-
-await mint_txn.prove();
-await mint_txn.sign([deployerAccount]).send();
-
-console.log('minted');
-
-console.log(
-    contract.totalAmountInCirculation.get() +
-    ' ' +
-    Mina.getAccount(zkAppAddress).tokenSymbol
-);
-
-// ----------------------------------------------------
-
-console.log('sending...');
-
-const sendAmount = UInt64.from(3);
-
-const send_txn = await Mina.transaction(deployerAccount.toPublicKey(), () => {
-    AccountUpdate.fundNewAccount(deployerAccount.toPublicKey());
-    contract.sendTokens(zkAppAddress, deployerAccount.toPublicKey(), sendAmount);
-});
-await send_txn.prove();
-await send_txn.sign([deployerAccount]).send();
-
-console.log('sent');
-
-console.log(
-    contract.totalAmountInCirculation.get() +
-    ' ' +
-    Mina.getAccount(zkAppAddress).tokenSymbol
-);
-
-// ----------------------------------------------------
-
-console.log(
-    'deployer tokens:',
-    Mina.getBalance(
-        deployerAccount.toPublicKey(),
-        contract.token.id
-    ).value.toBigInt()
-);
-
-console.log(
-    'zkapp tokens:',
-    Mina.getBalance(zkAppAddress, contract.token.id).value.toBigInt()
-);
-
-// ----------------------------------------------------
-
-console.log('Shutting down');
-
-await shutdown();

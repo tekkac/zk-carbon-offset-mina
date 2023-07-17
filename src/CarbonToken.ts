@@ -16,7 +16,7 @@ import {
 
 const tokenSymbol = 'MYTKN';
 
-export class BasicTokenContract extends SmartContract {
+export class CarbonTokenContract extends SmartContract {
   @state(UInt64) totalAmountInCirculation = State<UInt64>();
   // Root of the CarbonOffsetTree
   @state(Field) treeRoot = State<Field>();
@@ -32,10 +32,11 @@ export class BasicTokenContract extends SmartContract {
 
     this.account.permissions.set({
       ...Permissions.default(),
-      editState: permissionToEdit,
       setTokenSymbol: permissionToEdit,
       send: permissionToEdit,
       receive: permissionToEdit,
+      editState: Permissions.proofOrSignature(),
+      access: Permissions.proofOrSignature(),
     });
   }
 
@@ -82,23 +83,27 @@ export class BasicTokenContract extends SmartContract {
     });
   }
 
-  // @method burnTokens(addressToDecrease: PublicKey, amount: UInt64) {
-  //   this.token.burn({
-  //     address: addressToDecrease,
-  //     amount: amount,
-  //   });
-  // }
-
   @method OffsetTokens(userKey: PrivateKey, amount: UInt64, reason: Field) {
     let userAddress = userKey.toPublicKey();
+
+    let totalAmountInCirculation = this.totalAmountInCirculation.get();
+    this.totalAmountInCirculation.assertEquals(totalAmountInCirculation);
+
+    let newTotalAmountInCirculation = totalAmountInCirculation.add(amount);
+
     this.token.burn({
       address: userAddress,
       amount: amount,
     });
+
+    // Update totalAmountInCirculation
+    this.totalAmountInCirculation.set(newTotalAmountInCirculation);
+
     // Update MerkleMapHere
 
   }
 
-  @method getProofOfOffset(address: PublicKey) {
+  @method getProofOfOffset(address: PublicKey, amount: Field, reason: Field) {
+    // Access the MerkleMap and return true or false
   }
 }
