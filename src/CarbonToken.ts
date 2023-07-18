@@ -12,6 +12,7 @@ import {
   MerkleMapWitness,
   MerkleMap,
   PrivateKey,
+  Poseidon,
 } from 'snarkyjs';
 
 const tokenSymbol = 'MYTKN';
@@ -21,6 +22,10 @@ export class CarbonTokenContract extends SmartContract {
   @state(UInt64) totalAmountInCirculation = State<UInt64>();
   // Root of the CarbonOffsetTree
   @state(Field) treeRoot = State<Field>();
+
+  events = {
+    'add-merkle-leaf': Field,
+  }
 
   deploy(args: DeployArgs) {
     super.deploy(args);
@@ -98,26 +103,26 @@ export class CarbonTokenContract extends SmartContract {
     this.totalAmountInCirculation.set(newTotalAmountInCirculation);
 
     // Update MerkleMapHere
-    // this.addOffset(userAddress, amount, reason);
+    this.addOffset(userAddress, amount, reason, witness);
 
   }
+
 
   addOffset(userAddress: PublicKey, amount: UInt64, reason: Field, witness: MerkleMapWitness) {
     let current_root = this.treeRoot.get();
     this.treeRoot.assertEquals(current_root);
 
+    // Check old state
+    let new_key = Poseidon.hash(userAddress.toFields().concat(amount.toFields()).concat(reason.toFields()));
+    const [rootBefore, key] = witness.computeRootAndKey(Field.from(0));
+    new_key.assertEquals(key);
+    current_root.assertEquals(rootBefore);
 
-    // const [rootBefore, key] = witness.computeRootAndKey(key);
+    // Add new element
+    const [newRoot, _] = witness.computeRootAndKey(Field.from(1));
+    this.treeRoot.set(newRoot);
 
-    // rootBefore.assertEquals(initialRoot, DEPOSIT_WITNESS_ERROR_MSG);
-    // key.assertEquals(commitment, DEPOSIT_WITNESS_ERROR_MSG);
-
-    // // compute the root after the deposit
-    // const [rootAfter] = witness.computeRootAndKey(depositType);
+    this.emitEvent('add-merkle-leaf', new_key);
   }
 
-  @method getProofOfOffset(address: PublicKey, amount: Field, reason: Field) {
-    // Access the MerkleMap and return true or false
-
-  }
 }

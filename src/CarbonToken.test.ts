@@ -10,6 +10,8 @@ import { Mina, PrivateKey, PublicKey, AccountUpdate, UInt64, Signature, TokenId,
 
 let proofsEnabled = false;
 
+
+
 describe('CarbonToken', () => {
   let deployerAccount: PublicKey,
     deployerKey: PrivateKey,
@@ -79,8 +81,12 @@ describe('CarbonToken', () => {
     ).toEqual(100_000n);
   });
 
-  it.only('can offset Carbon tokens with a reason', async () => {
+  it('can offset Carbon tokens with a reason', async () => {
     await localDeploy();
+
+    let map = new MerkleMap();
+    var leaves: { [name: string]: string } = {};
+
     const mintAmount = UInt64.from(100_000);
 
     // Mint
@@ -106,28 +112,28 @@ describe('CarbonToken', () => {
     console.log(account.balance.toBigInt());
     tx =
       await Mina.transaction(senderAccount, () => {
-
-        let map = new MerkleMap();
         let reason = Field.from(1);
-        let key = Poseidon.hash(senderAccount.toFields().concat(reason.toFields()));
+        let key = Poseidon.hash(senderAccount.toFields().concat(burnAmount.toFields()).concat(reason.toFields()));
         let witness = map.getWitness(key);
 
+
         zkApp.offsetTokens(senderKey, burnAmount, reason, witness);
+
+        // Update offchain map
+        map.set(key, Field.from(1))
+        leaves[key.toString()] = '1';
+
       });
 
     await tx.prove();
     console.log(tx.toPretty());
     await tx.sign([senderKey]).send();
-
-
     expect(
       Mina.getBalance(senderAccount, tokenId).value.toBigInt()
     ).toEqual(90_000n);
+
   });
 
-  it('can get a proof of offset', async () => {
-    await localDeploy();
-    // TODO
-  });
+
 
 });
