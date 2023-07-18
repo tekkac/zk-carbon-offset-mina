@@ -1,5 +1,5 @@
 import { CarbonTokenContract } from './CarbonToken.js';
-import { Mina, PrivateKey, PublicKey, AccountUpdate, UInt64, Signature, TokenId, Field } from 'snarkyjs';
+import { Mina, PrivateKey, PublicKey, AccountUpdate, UInt64, Signature, TokenId, Field, Poseidon, MerkleMap } from 'snarkyjs';
 
 /*
  * This file specifies how to test the `Add` example smart contract. It is safe to delete this file and replace
@@ -63,8 +63,6 @@ describe('CarbonToken', () => {
       await Mina.transaction(deployerAccount, () => {
         AccountUpdate.fundNewAccount(deployerAccount);
 
-
-
         const mintSignature = Signature.create(
           zkAppPrivateKey,
           mintAmount.toFields().concat(zkAppAddress.toFields())
@@ -82,9 +80,50 @@ describe('CarbonToken', () => {
     ).toEqual(100_000n);
   });
 
-  it('can offset Carbon tokens with a reason', async () => {
+  it.only('can offset Carbon tokens with a reason', async () => {
     await localDeploy();
-    // TODO
+    const mintAmount = UInt64.from(100_000);
+
+    // Mint
+    let tx =
+      await Mina.transaction(deployerAccount, () => {
+        AccountUpdate.fundNewAccount(deployerAccount);
+
+
+        const mintSignature = Signature.create(
+          zkAppPrivateKey,
+          mintAmount.toFields().concat(senderAccount.toFields())
+        );
+
+        zkApp.mint(senderAccount, mintAmount, mintSignature);
+        zkApp.requireSignature();
+      })
+
+    await tx.sign([deployerKey, zkAppPrivateKey]).send();
+
+    // Offset
+    const burnAmount = UInt64.from(10_000);
+    let account = Mina.getAccount(senderAccount);
+    console.log(account.balance.toBigInt());
+    tx =
+      await Mina.transaction(senderAccount, () => {
+
+        let map = new MerkleMap();
+        let reason = Field.from(1);
+        let key = Poseidon.hash(senderAccount.toFields().concat(reason.toFields()));
+        let witness = map.getWitness(key);
+
+        zkApp.offsetTokens(senderKey, burnAmount, reason, witness);
+      });
+
+    await tx.prove();
+    console.log(tx.toPretty());
+    await tx.sign([senderKey]).send();
+
+
+    expect(
+      Mina.getBalance(senderAccount, tokenId).value.toBigInt()
+    ).toEqual(90_000n);
   });
 
   it('can get a proof of offset', async () => {
