@@ -59,7 +59,7 @@ describe('CarbonToken', () => {
     await localDeploy();
 
     const mintAmount = UInt64.from(100_000);
-    await (
+    let tx =
       await Mina.transaction(deployerAccount, () => {
         AccountUpdate.fundNewAccount(deployerAccount);
 
@@ -69,10 +69,9 @@ describe('CarbonToken', () => {
         );
         zkApp.mint(zkAppAddress, mintAmount, mintSignature);
         zkApp.requireSignature();
-      })
-    )
-      .sign([deployerKey, zkAppPrivateKey])
-      .send();
+      });
+    await tx.prove();
+    await tx.sign([deployerKey, zkAppPrivateKey]).send();
 
     expect(zkApp.totalAmountInCirculation.get()).toEqual(mintAmount);
     expect(
@@ -97,8 +96,8 @@ describe('CarbonToken', () => {
 
         zkApp.mint(senderAccount, mintAmount, mintSignature);
         zkApp.requireSignature();
-      })
-
+      });
+    await tx.prove();
     await tx.sign([deployerKey, zkAppPrivateKey]).send();
 
     // Offset

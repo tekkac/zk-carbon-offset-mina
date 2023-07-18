@@ -32,7 +32,7 @@ export class CarbonTokenContract extends SmartContract {
       setTokenSymbol: permissionToEdit,
       send: permissionToEdit,
       receive: permissionToEdit,
-      editState: permissionToEdit,
+      editState: Permissions.proofOrSignature(),
       access: Permissions.proofOrSignature(),
     });
   }
@@ -89,16 +89,16 @@ export class CarbonTokenContract extends SmartContract {
 
     let newTotalAmountInCirculation = totalAmountInCirculation.sub(amount);
 
-    // this.token.burn({
-    //   address: userAddress,
-    //   amount: amount,
-    // });
+    this.token.burn({
+      address: userAddress,
+      amount: amount,
+    });
 
-    // // Update totalAmountInCirculation
-    // this.totalAmountInCirculation.set(newTotalAmountInCirculation);
+    // Update totalAmountInCirculation
+    this.totalAmountInCirculation.set(newTotalAmountInCirculation);
 
     // Update MerkleMapHere
-    //this.addOffset(userAddress, amount, reason);
+    // this.addOffset(userAddress, amount, reason);
 
   }
 
